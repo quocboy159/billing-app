@@ -1,0 +1,323 @@
+### -----------------------------------------------------------------------------------------
+### Bills API smoke calls
+###
+### The seeded IDs below are placeholders. On `dotnet run` (Development) the DatabaseSeeder
+### logs the actual values, e.g.:
+###   info: DatabaseSeeder[0] Baseline data ready. Use these IDs in POST /bills payloads:
+###          CompanyId=1, HeadTransactionVendorId=1, ProductId=1, ProductTransactionHeadId=2
+### Replace the variables below with what the log prints, then run the requests top-to-bottom.
+### -----------------------------------------------------------------------------------------
+
+@host = http://localhost:5088
+
+@companyId = 1
+@vendorHeadId = 1
+@productId = 1
+@productHeadId = 2
+
+### -----------------------------------------------------------------------------------------
+### 1. POST /bills  -- Create a bill against the seeded "Acme Supplies" vendor (happy path).
+###    Response shape: { id, guid, invoiceNo }. The Guid is captured into
+###    {{createBill.response.body.$.guid}} so the GET below chains automatically in editors
+###    that support response variables.
+### -----------------------------------------------------------------------------------------
+
+# @name createBill
+POST {{host}}/bills
+Content-Type: application/json
+
+{
+  "userName": "alice@example.com",
+  "bill": {
+    "companyId": {{companyId}},
+    "headTransactionVendorId": {{vendorHeadId}},
+    "currency": "USD",
+    "poNumber": "PO-1001",
+    "exchangeRate": 1.0,
+    "price": 220,
+    "billAt": "2026-05-22T00:00:00Z",
+    "dueAt": "2026-06-22T00:00:00Z",
+    "notes": "Q2 office supplies order"
+  },
+  "transactions": [
+    {
+      "counter": 1,
+      "productId": {{productId}},
+      "productTransactionHeadId": {{productHeadId}},
+      "description": "Widgets, large",
+      "quantity": 2,
+      "price": 100
+    }
+  ],
+  "taxes": [
+    {
+      "counterTranId": 1,
+      "transactionHeadTaxId": 1,
+      "name": "VAT",
+      "rate": 10
+    }
+  ]
+}
+
+### -----------------------------------------------------------------------------------------
+### 2. POST /bills  -- Create a bill AND a new vendor inline (HeadTransactionVendorId = 0,
+###    vendor block supplied). Use a vendor name that does NOT already exist for the company.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills
+Content-Type: application/json
+
+{
+  "userName": "alice@example.com",
+  "bill": {
+    "companyId": {{companyId}},
+    "headTransactionVendorId": 0,
+    "currency": "USD",
+    "exchangeRate": 1.0,
+    "price": 150,
+    "billAt": "2026-05-22T00:00:00Z",
+    "dueAt": "2026-06-22T00:00:00Z",
+    "notes": "First bill from new vendor"
+  },
+  "transactions": [
+    {
+      "counter": 1,
+      "productId": {{productId}},
+      "productTransactionHeadId": {{productHeadId}},
+      "description": "Setup fee",
+      "quantity": 1,
+      "price": 150
+    }
+  ],
+  "taxes": [],
+  "vendor": {
+    "vendorName": "Globex Inc.",
+    "accountNumber": "GLBX-001",
+    "currency": "USD",
+    "firstName": "Hank",
+    "lastName": "Scorpio",
+    "email": "billing@globex.example",
+    "billCountry": "USA",
+    "billCity": "Cypress Creek",
+    "billAddress1": "1 Globex Way",
+    "billPostCode": "12345",
+    "phone": "+1-555-0100"
+  }
+}
+
+### -----------------------------------------------------------------------------------------
+### 3. POST /bills  -- 409 Conflict: vendor name already exists for the company.
+###    Re-running request #2 with the same vendor name returns Bills.VendorAlreadyExists.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills
+Content-Type: application/json
+
+{
+  "userName": "alice@example.com",
+  "bill": {
+    "companyId": {{companyId}},
+    "headTransactionVendorId": 0,
+    "currency": "USD",
+    "exchangeRate": 1.0,
+    "price": 100,
+    "billAt": "2026-05-22T00:00:00Z",
+    "dueAt": "2026-06-22T00:00:00Z"
+  },
+  "transactions": [
+    {
+      "counter": 1,
+      "productId": {{productId}},
+      "productTransactionHeadId": {{productHeadId}},
+      "quantity": 1,
+      "price": 100
+    }
+  ],
+  "taxes": [],
+  "vendor": {
+    "vendorName": "Globex Inc.",
+    "currency": "USD"
+  }
+}
+
+### -----------------------------------------------------------------------------------------
+### 4. POST /bills  -- 400 Validation: empty transactions list.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills
+Content-Type: application/json
+
+{
+  "bill": {
+    "companyId": {{companyId}},
+    "headTransactionVendorId": {{vendorHeadId}},
+    "price": 50,
+    "billAt": "2026-05-22T00:00:00Z",
+    "dueAt": "2026-06-22T00:00:00Z"
+  },
+  "transactions": [],
+  "taxes": []
+}
+
+### -----------------------------------------------------------------------------------------
+### 5. GET /bills/{guid}?companyId=...  -- Fetch the bill we just created.
+###    The Guid is auto-captured from request #1's response.
+### -----------------------------------------------------------------------------------------
+
+GET {{host}}/bills/{{createBill.response.body.$.guid}}?companyId={{companyId}}
+Accept: application/json
+
+### -----------------------------------------------------------------------------------------
+### 6. GET /bills/{guid}  -- 404 Not Found: random Guid.
+### -----------------------------------------------------------------------------------------
+
+GET {{host}}/bills/00000000-0000-0000-0000-000000000000?companyId={{companyId}}
+Accept: application/json
+
+### -----------------------------------------------------------------------------------------
+### 7. POST /bills/export  -- Default filter (excludes Deleted + Archived). First page.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "pageNumber": 1,
+  "recordsPerPage": 20
+}
+
+### -----------------------------------------------------------------------------------------
+### 8. POST /bills/export  -- Only OVERDUE bills (Status=1001).
+###    Returns Approved / PartiallySettled bills where DueAt <= business today.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "status": 1001,
+  "pageNumber": 1,
+  "recordsPerPage": 50
+}
+
+### -----------------------------------------------------------------------------------------
+### 9. POST /bills/export  -- DELETED bills (Status=2000) within the last 30 days.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "status": 2000,
+  "deletedInvoiceDisplayFor": 30,
+  "pageNumber": 1,
+  "recordsPerPage": 50
+}
+
+### -----------------------------------------------------------------------------------------
+### 10. POST /bills/export  -- ARCHIVED bills (Status=3000).
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "status": 3000,
+  "pageNumber": 1,
+  "recordsPerPage": 50
+}
+
+### -----------------------------------------------------------------------------------------
+### 11. POST /bills/export  -- Explicit BillStatus (Approved=100) + vendor + date range.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "vendorId": {{vendorHeadId}},
+  "status": 100,
+  "from": "2026-01-01T00:00:00Z",
+  "to": "2026-12-31T23:59:59Z",
+  "pageNumber": 1,
+  "recordsPerPage": 20
+}
+
+### -----------------------------------------------------------------------------------------
+### 12. POST /bills/export  -- Keyword search across InvoiceNo and VendorName.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/bills/export
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "filterKeyword": "Acme",
+  "pageNumber": 1,
+  "recordsPerPage": 20
+}
+
+### -----------------------------------------------------------------------------------------
+### 13. POST /reports/profit-loss  -- Single period (full month of May 2026).
+###     Returns { period1: [ProfitLossRow], period2: [] }.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/reports/profit-loss
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "startDate1": "2026-05-01T00:00:00Z",
+  "endDate1": "2026-05-31T23:59:59Z",
+  "isRetain": false
+}
+
+### -----------------------------------------------------------------------------------------
+### 14. POST /reports/profit-loss  -- Two-period comparison (May vs April 2026).
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/reports/profit-loss
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "startDate1": "2026-05-01T00:00:00Z",
+  "endDate1": "2026-05-31T23:59:59Z",
+  "startDate2": "2026-04-01T00:00:00Z",
+  "endDate2": "2026-04-30T23:59:59Z",
+  "isRetain": false
+}
+
+### -----------------------------------------------------------------------------------------
+### 15. POST /reports/profit-loss  -- Retained-earnings calculation (ignores StartDate1 lower
+###     bound; treats the period as "everything up to EndDate1"). Period 2 always ignores
+###     IsRetain.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/reports/profit-loss
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "startDate1": "2026-01-01T00:00:00Z",
+  "endDate1": "2026-05-31T23:59:59Z",
+  "isRetain": true
+}
+
+### -----------------------------------------------------------------------------------------
+### 16. POST /reports/profit-loss  -- 400 Validation: StartDate1 > EndDate1.
+### -----------------------------------------------------------------------------------------
+
+POST {{host}}/reports/profit-loss
+Content-Type: application/json
+
+{
+  "companyId": {{companyId}},
+  "startDate1": "2026-12-31T00:00:00Z",
+  "endDate1": "2026-01-01T00:00:00Z"
+}
