@@ -79,7 +79,9 @@ tests/
 
 ```powershell
 cd "d:\Quoc\BE Candidate 1\BE Candidate 1\Exercise 1"
-docker compose up -d
+docker compose down -v          # delete the SQL Server volume
+docker compose up -d            # fresh DB
+dotnet run --project src/Web.Api
 ```
 
 Container name `bills-mssql`, port `1433`, SA password `Your_strong_Password123!`, data
