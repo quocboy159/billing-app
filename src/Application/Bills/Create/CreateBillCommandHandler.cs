@@ -60,7 +60,7 @@ internal sealed class CreateBillCommandHandler(
             }
         }
 
-        // Step 4: open the transaction. `await using` rolls back if we never reach Commit.
+        // Step 4: open the transaction. await using rolls back if we never reach Commit.
         await using IDbContextTransaction transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
         int vendorHeadId = header.HeadTransactionVendorId;
@@ -146,7 +146,7 @@ internal sealed class CreateBillCommandHandler(
             return Result.Failure<CreateBillResponse>(BillErrors.InsertFailed());
         }
 
-        // Step 11: write the activity log entry (= EXEC ActivitiesAdd).
+        // Step 11: write the activity log entry
         await activityLogger.LogAsync(
             header.CompanyId,
             bill.Id,

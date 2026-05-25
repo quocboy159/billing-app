@@ -114,6 +114,8 @@ internal sealed class GetProfitLossReportQueryHandler(
                     SubHeadName = s.Name,
                     TransactionId = h.Id,
                     TransactionName = h.Name,
+                    // Canonical formula: Domain.Invoices.InvoiceDiscount.AfterDiscount(...)
+                    // Inlined here because EF Core 10 cannot translate a method call to SQL.
                     ProductPrice = (t.Quantity * t.Price)
                                    - (t.DiscountType == 1
                                        ? t.Discount
@@ -147,6 +149,8 @@ internal sealed class GetProfitLossReportQueryHandler(
                 SubHeadName = s.Name,
                 TransactionId = h.Id,
                 TransactionName = h.Name,
+                // Canonical formula: Domain.Invoices.InvoiceDiscount.AfterDiscount(...) * paid / total.
+                // Inlined because EF Core 10 cannot translate a method call to SQL.
                 ProductPrice = ((t.Quantity * t.Price)
                                 - (t.DiscountType == 1
                                     ? t.Discount
@@ -195,8 +199,11 @@ internal sealed class GetProfitLossReportQueryHandler(
                 SubHeadName = s.Name,
                 TransactionId = h.Id,
                 TransactionName = h.Name,
-                // Negative -- credit notes reduce revenue. SP passes invoice-discount type as 0
-                // (no row-level invoice discount on a credit note).
+                // Negative -- credit notes reduce revenue.
+                // Canonical formula: Domain.Invoices.InvoiceDiscount.AfterDiscount(...) with
+                // invoiceDiscountType=0 (CreditNote entity doesn't model header-level discount today;
+                // see InvoiceDiscount.cs for the SP-parity gap). Inlined because EF cannot translate
+                // a method call to SQL.
                 ProductPrice = -((t.Quantity * t.Price)
                                  - (t.DiscountType == 1
                                      ? t.Discount
